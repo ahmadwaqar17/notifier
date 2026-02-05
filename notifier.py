@@ -3,6 +3,7 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+from email.header import Header
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from datetime import datetime
@@ -118,10 +119,10 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     """
 
     msg = MIMEMultipart()
-    msg["From"] = f"Gold Price Notifier <{GMAIL_EMAIL}>"
-    msg["To"] = EMAIL_RECIPIENT
-    msg["Subject"] = "Gold Price Update (PKR)"
-    # FIX: set UTF-8 encoding
+    # Use Header to encode From, To, and Subject in UTF-8
+    msg["From"] = str(Header(f"Gold Price Notifier <{GMAIL_EMAIL}>", "utf-8"))
+    msg["To"] = str(Header(EMAIL_RECIPIENT, "utf-8"))
+    msg["Subject"] = str(Header("Gold Price Update (PKR)", "utf-8"))
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
