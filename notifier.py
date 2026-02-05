@@ -3,6 +3,7 @@ import requests
 import smtplib
 from email.message import EmailMessage
 from datetime import datetime
+from zoneinfo import ZoneInfo  # Python 3.9+ for timezone support
 
 # ================= CONFIG =================
 GOLD_API_KEY = os.environ.get("GOLD_API_KEY")
@@ -18,6 +19,7 @@ GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
 
 GRAMS_PER_TOLA = 11.6638
+PAKISTAN_TZ = ZoneInfo("Asia/Karachi")
 
 # ================= GOLD PRICE =================
 def get_gold_price_usd():
@@ -29,7 +31,8 @@ def get_gold_price_usd():
 
     for attempt in range(3):
         try:
-            print(f"[{datetime.now()}] Fetching gold prices (Attempt {attempt + 1})")
+            now = datetime.now(PAKISTAN_TZ)
+            print(f"[{now}] Fetching gold prices (Attempt {attempt + 1})")
             r = requests.get(url, headers=headers, timeout=10)
             r.raise_for_status()
             data = r.json()
@@ -42,12 +45,13 @@ def get_gold_price_usd():
 
 def get_usd_to_pkr_rate():
     try:
-        print(f"[{datetime.now()}] Fetching USD → PKR rate")
+        now = datetime.now(PAKISTAN_TZ)
+        print(f"[{now}] Fetching USD → PKR rate")
         r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10)
         r.raise_for_status()
         return r.json()["rates"]["PKR"]
     except Exception as e:
-        print(f"Exchange rate failed: {e}")
+        print(f"Exchange rate fetch failed: {e}")
         return 280.0  # fallback
 
 
@@ -73,10 +77,11 @@ def send_whatsapp_message(price_24k, price_22k):
     elif number.startswith("03"):
         number = "92" + number[1:]
 
+    now = datetime.now(PAKISTAN_TZ)
     body = (
         f"📊 *Gold Price Update (PKR)*\n"
-        f"📅 {datetime.now().strftime('%d %b %Y')} | "
-        f"⏰ {datetime.now().strftime('%I:%M %p')}\n\n"
+        f"📅 {now.strftime('%d %b %Y')} | "
+        f"⏰ {now.strftime('%I:%M %p')}\n\n"
         f"🟡 *24K per Tola:* Rs. {format_price(price_24k)}\n"
         f"🟠 *22K per Tola:* Rs. {format_price(price_22k)}"
     )
@@ -94,14 +99,9 @@ def send_whatsapp_message(price_24k, price_22k):
     }
 
     try:
-        r = requests.post(
-            WHAPI_API_URL,
-            json=payload,
-            headers=headers,
-            timeout=20
-        )
+        r = requests.post(WHAPI_API_URL, json=payload, headers=headers, timeout=20)
         r.raise_for_status()
-        print("WhatsApp message sent successfully via Whapi")
+        print(f"[{now}] WhatsApp message sent successfully via Whapi")
     except Exception as e:
         print(f"WhatsApp error: {e} | {r.text if 'r' in locals() else ''}")
 
@@ -111,8 +111,9 @@ def send_email(price_24k, price_22k, usd_to_pkr):
         print("Email skipped: missing Gmail config")
         return
 
-    date_str = datetime.now().strftime('%d %b %Y')
-    time_str = datetime.now().strftime('%I:%M %p')
+    now = datetime.now(PAKISTAN_TZ)
+    date_str = now.strftime('%d %b %Y')
+    time_str = now.strftime('%I:%M %p')
 
     msg = EmailMessage()
     msg["Subject"] = f"Gold Price Update (PKR) - {date_str}"
@@ -149,7 +150,7 @@ def send_email(price_24k, price_22k, usd_to_pkr):
             server.starttls()
             server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
             server.send_message(msg)
-            print("Email sent successfully")
+            print(f"[{now}] Email sent successfully")
     except Exception as e:
         print(f"Email error: {e}")
 
@@ -165,10 +166,11 @@ def job():
     price_24k = calculate_price_per_tola(price_24k_usd, usd_to_pkr)
     price_22k = calculate_price_per_tola(price_22k_usd, usd_to_pkr)
 
+    now = datetime.now(PAKISTAN_TZ)
     print("===================================")
-    print(f"24K Tola: Rs. {format_price(price_24k)}")
-    print(f"22K Tola: Rs. {format_price(price_22k)}")
-    print(f"USD/PKR: {usd_to_pkr:.2f}")
+    print(f"[{now}] 24K Tola: Rs. {format_price(price_24k)}")
+    print(f"[{now}] 22K Tola: Rs. {format_price(price_22k)}")
+    print(f"[{now}] USD/PKR: {usd_to_pkr:.2f}")
     print("===================================")
 
     send_whatsapp_message(price_24k, price_22k)
