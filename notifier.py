@@ -119,17 +119,16 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     """
 
     msg = MIMEMultipart()
-    # Use Header to encode From, To, and Subject in UTF-8
-    msg["From"] = str(Header(f"Gold Price Notifier <{GMAIL_EMAIL}>", "utf-8"))
-    msg["To"] = str(Header(EMAIL_RECIPIENT, "utf-8"))
-    msg["Subject"] = str(Header("Gold Price Update (PKR)", "utf-8"))
+    msg["From"] = GMAIL_EMAIL
+    msg["To"] = EMAIL_RECIPIENT
+    msg["Subject"] = "Gold Price Update (PKR)"
     msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
             server.starttls()
             server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
+            server.sendmail(GMAIL_EMAIL, EMAIL_RECIPIENT, msg.as_string())
             print("Email sent successfully via Gmail")
 
     except Exception as e:
