@@ -2,7 +2,7 @@ name: Gold Price WhatsApp & Email Notifier
 
 on:
   schedule:
-    - cron: '*/180 * * * *'   # every 3 hours
+    - cron: '0 */3 * * *'   # Every 3 hours
   workflow_dispatch:
 
 jobs:
@@ -21,13 +21,12 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests twilio
+          pip install requests
 
       - name: Run notifier
         env:
           GOLD_API_KEY: ${{ secrets.GOLD_API_KEY }}
-          TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
-          TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
+          WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
           MY_WHATSAPP_NUMBER: ${{ secrets.MY_WHATSAPP_NUMBER }}
           GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
