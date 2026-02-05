@@ -121,7 +121,8 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     msg["From"] = f"Gold Price Notifier <{GMAIL_EMAIL}>"
     msg["To"] = EMAIL_RECIPIENT
     msg["Subject"] = "Gold Price Update (PKR)"
-    msg.attach(MIMEText(html, "html"))
+    # FIX: set UTF-8 encoding
+    msg.attach(MIMEText(html, "html", "utf-8"))
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
