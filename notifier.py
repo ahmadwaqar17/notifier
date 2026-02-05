@@ -50,7 +50,7 @@ def get_gold_price_usd():
 def get_usd_to_pkr_rate():
     url = "https://api.exchangerate-api.com/v4/latest/USD"
     try:
-        print(f"[{datetime.now()}] Fetching USD -> PKR rate...")
+        print(f"[{datetime.now()}] Fetching USD to PKR rate...")
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         return r.json()["rates"]["PKR"]
@@ -65,6 +65,11 @@ def calculate_price_per_tola(price_per_gram_usd, usd_to_pkr):
     return round(price_per_gram_usd * usd_to_pkr * GRAMS_PER_TOLA, 2)
 
 
+def format_price(price):
+    """Format price with commas, ASCII-safe"""
+    return "{:,.2f}".format(price).replace(',', ',')
+
+
 # ================= WHATSAPP =================
 def send_whatsapp_message(price_24k, price_22k):
     if not all([TWILIO_SID, TWILIO_AUTH, MY_WHATSAPP_NUMBER]):
@@ -75,8 +80,8 @@ def send_whatsapp_message(price_24k, price_22k):
         f"Gold Price Update (PKR)\n"
         f"Date: {datetime.now().strftime('%d %b %Y')} | "
         f"Time: {datetime.now().strftime('%I:%M %p')}\n\n"
-        f"24K per Tola: Rs. {price_24k:,.2f}\n"
-        f"22K per Tola: Rs. {price_22k:,.2f}"
+        f"24K per Tola: Rs. {format_price(price_24k)}\n"
+        f"22K per Tola: Rs. {format_price(price_22k)}"
     )
 
     try:
@@ -104,34 +109,46 @@ def send_email(price_24k, price_22k, usd_to_pkr):
         print("Email skipped: missing Gmail config.")
         return
 
-    # Use only ASCII-safe characters in the HTML
-    html = f"""
+    # Format all numbers explicitly to avoid locale issues
+    date_str = datetime.now().strftime('%d %b %Y')
+    time_str = datetime.now().strftime('%I:%M %p')
+    price_24k_str = format_price(price_24k)
+    price_22k_str = format_price(price_22k)
+    usd_pkr_str = "{:.2f}".format(usd_to_pkr)
+
+    html = f"""<html>
+<body>
     <h2>Gold Price Update (PKR)</h2>
     <p>
-      <b>Date:</b> {datetime.now().strftime('%d %b %Y')}<br>
-      <b>Time:</b> {datetime.now().strftime('%I:%M %p')}
+      <b>Date:</b> {date_str}<br>
+      <b>Time:</b> {time_str}
     </p>
     <ul>
-      <li><b>24K per Tola:</b> Rs. {price_24k:,.2f}</li>
-      <li><b>22K per Tola:</b> Rs. {price_22k:,.2f}</li>
-      <li><b>USD/PKR:</b> {usd_to_pkr:.2f}</li>
+      <li><b>24K per Tola:</b> Rs. {price_24k_str}</li>
+      <li><b>22K per Tola:</b> Rs. {price_22k_str}</li>
+      <li><b>USD/PKR:</b> {usd_pkr_str}</li>
     </ul>
-    """
-
-    msg = MIMEMultipart('alternative')
-    msg["From"] = GMAIL_EMAIL
-    msg["To"] = EMAIL_RECIPIENT
-    msg["Subject"] = "Gold Price Update (PKR)"
-    
-    # Attach HTML part with explicit UTF-8 encoding
-    html_part = MIMEText(html, "html", "utf-8")
-    msg.attach(html_part)
+</body>
+</html>"""
 
     try:
+        msg = MIMEMultipart('alternative')
+        msg["From"] = GMAIL_EMAIL
+        msg["To"] = EMAIL_RECIPIENT
+        msg["Subject"] = "Gold Price Update (PKR)"
+        
+        # Attach HTML with UTF-8 encoding
+        msg.attach(MIMEText(html, "html", "utf-8"))
+
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
             server.starttls()
             server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
-            server.send_message(msg)
+            # Use sendmail with explicit bytes encoding
+            server.sendmail(
+                GMAIL_EMAIL, 
+                [EMAIL_RECIPIENT], 
+                msg.as_string().encode('utf-8').decode('ascii', 'ignore').encode('ascii')
+            )
             print("Email sent successfully via Gmail")
 
     except Exception as e:
@@ -152,8 +169,8 @@ def job():
         price_22k = calculate_price_per_tola(price_22k_usd, usd_to_pkr)
 
         print("===================================")
-        print(f"24K Tola: Rs. {price_24k:,}")
-        print(f"22K Tola: Rs. {price_22k:,}")
+        print(f"24K Tola: Rs. {format_price(price_24k)}")
+        print(f"22K Tola: Rs. {format_price(price_22k)}")
         print(f"USD/PKR: {usd_to_pkr:.2f}")
         print("===================================")
 
