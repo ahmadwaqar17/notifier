@@ -117,7 +117,7 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     """
 
     msg = MIMEMultipart()
-    msg["From"] = "Gold Price Notifier <ahmedwaqar2002@gmail.com>"
+    msg["From"] = "Gold Price Notifier <ahmed.waqar@teamstack360.co>"
     msg["To"] = EMAIL_RECIPIENT
     msg["Subject"] = "Gold Price Update (PKR)"
     msg.attach(MIMEText(html, "html"))
