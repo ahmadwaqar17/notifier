@@ -15,8 +15,9 @@ TWILIO_AUTH = os.environ.get("TWILIO_AUTH_TOKEN")
 MY_WHATSAPP_NUMBER = os.environ.get("MY_WHATSAPP_NUMBER")
 TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"
 
-BREVO_SMTP_LOGIN = os.environ.get("BREVO_SMTP_LOGIN")
-BREVO_SMTP_KEY = os.environ.get("BREVO_SMTP_KEY")
+# ===== Gmail config =====
+GMAIL_EMAIL = os.environ.get("GMAIL_EMAIL")
+GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
 
 GRAMS_PER_TOLA = 11.6638
@@ -97,10 +98,10 @@ def send_whatsapp_message(price_24k, price_22k):
         print(f"Unexpected WhatsApp error: {e}")
 
 
-# ================= EMAIL (BREVO SMTP) =================
+# ================= EMAIL (GMAIL SMTP) =================
 def send_email(price_24k, price_22k, usd_to_pkr):
-    if not all([BREVO_SMTP_LOGIN, BREVO_SMTP_KEY, EMAIL_RECIPIENT]):
-        print("Email skipped: missing email config.")
+    if not all([GMAIL_EMAIL, GMAIL_APP_PASSWORD, EMAIL_RECIPIENT]):
+        print("Email skipped: missing Gmail config.")
         return
 
     html = f"""
@@ -117,17 +118,17 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     """
 
     msg = MIMEMultipart()
-    msg["From"] = "Gold Price Notifier <ahmed.waqar@teamstack360.co>"
+    msg["From"] = f"Gold Price Notifier <{GMAIL_EMAIL}>"
     msg["To"] = EMAIL_RECIPIENT
     msg["Subject"] = "Gold Price Update (PKR)"
     msg.attach(MIMEText(html, "html"))
 
     try:
-        with smtplib.SMTP("smtp-relay.brevo.com", 587, timeout=20) as server:
+        with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
             server.starttls()
-            server.login(BREVO_SMTP_LOGIN, BREVO_SMTP_KEY)
+            server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
             server.send_message(msg)
-            print("Email sent successfully")
+            print("Email sent successfully via Gmail")
 
     except Exception as e:
         print(f"Email failed: {e}")
