@@ -3,7 +3,6 @@ import requests
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from email.header import Header
 from twilio.rest import Client
 from twilio.base.exceptions import TwilioRestException
 from datetime import datetime
@@ -51,7 +50,7 @@ def get_gold_price_usd():
 def get_usd_to_pkr_rate():
     url = "https://api.exchangerate-api.com/v4/latest/USD"
     try:
-        print(f"[{datetime.now()}] Fetching USD → PKR rate...")
+        print(f"[{datetime.now()}] Fetching USD -> PKR rate...")
         r = requests.get(url, timeout=10)
         r.raise_for_status()
         return r.json()["rates"]["PKR"]
@@ -74,8 +73,8 @@ def send_whatsapp_message(price_24k, price_22k):
 
     body = (
         f"Gold Price Update (PKR)\n"
-        f"📅 {datetime.now().strftime('%d %b %Y')} | "
-        f"⏰ {datetime.now().strftime('%I:%M %p')}\n\n"
+        f"Date: {datetime.now().strftime('%d %b %Y')} | "
+        f"Time: {datetime.now().strftime('%I:%M %p')}\n\n"
         f"24K per Tola: Rs. {price_24k:,.2f}\n"
         f"22K per Tola: Rs. {price_22k:,.2f}"
     )
@@ -105,6 +104,7 @@ def send_email(price_24k, price_22k, usd_to_pkr):
         print("Email skipped: missing Gmail config.")
         return
 
+    # Use only ASCII-safe characters in the HTML
     html = f"""
     <h2>Gold Price Update (PKR)</h2>
     <p>
@@ -118,17 +118,20 @@ def send_email(price_24k, price_22k, usd_to_pkr):
     </ul>
     """
 
-    msg = MIMEMultipart()
+    msg = MIMEMultipart('alternative')
     msg["From"] = GMAIL_EMAIL
     msg["To"] = EMAIL_RECIPIENT
     msg["Subject"] = "Gold Price Update (PKR)"
-    msg.attach(MIMEText(html, "html", "utf-8"))
+    
+    # Attach HTML part with explicit UTF-8 encoding
+    html_part = MIMEText(html, "html", "utf-8")
+    msg.attach(html_part)
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
             server.starttls()
             server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
-            server.sendmail(GMAIL_EMAIL, EMAIL_RECIPIENT, msg.as_string())
+            server.send_message(msg)
             print("Email sent successfully via Gmail")
 
     except Exception as e:
