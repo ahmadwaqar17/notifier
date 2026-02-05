@@ -2,18 +2,17 @@ import os
 import requests
 import smtplib
 from email.message import EmailMessage
-from twilio.rest import Client
-from twilio.base.exceptions import TwilioRestException
 from datetime import datetime
 
-# ======= CONFIG FROM SECRETS =======
+# ================= CONFIG =================
 GOLD_API_KEY = os.environ.get("GOLD_API_KEY")
-TWILIO_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-TWILIO_AUTH = os.environ.get("TWILIO_AUTH_TOKEN")
-MY_WHATSAPP_NUMBER = os.environ.get("MY_WHATSAPP_NUMBER")
-TWILIO_WHATSAPP_NUMBER = "whatsapp:+14155238886"
 
-# ===== Gmail config =====
+# ---- WHAPI WhatsApp ----
+WHAPI_TOKEN = os.environ.get("WHAPI_TOKEN")
+WHAPI_API_URL = "https://gate.whapi.cloud/messages/text"
+MY_WHATSAPP_NUMBER = os.environ.get("MY_WHATSAPP_NUMBER")
+
+# ---- Gmail ----
 GMAIL_EMAIL = os.environ.get("GMAIL_EMAIL")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
@@ -27,146 +26,154 @@ def get_gold_price_usd():
         "x-access-token": GOLD_API_KEY,
         "Content-Type": "application/json",
     }
+
     for attempt in range(3):
         try:
-            print(f"[{datetime.now()}] Fetching gold prices (Attempt {attempt + 1})...")
+            print(f"[{datetime.now()}] Fetching gold prices (Attempt {attempt + 1})")
             r = requests.get(url, headers=headers, timeout=10)
             r.raise_for_status()
             data = r.json()
-            return (
-                data.get("price_gram_24k"),
-                data.get("price_gram_22k"),
-            )
+            return data.get("price_gram_24k"), data.get("price_gram_22k")
         except Exception as e:
             print(f"Gold price fetch failed: {e}")
+
     return None, None
 
+
 def get_usd_to_pkr_rate():
-    url = "https://api.exchangerate-api.com/v4/latest/USD"
     try:
-        print(f"[{datetime.now()}] Fetching USD to PKR rate...")
-        r = requests.get(url, timeout=10)
+        print(f"[{datetime.now()}] Fetching USD → PKR rate")
+        r = requests.get("https://api.exchangerate-api.com/v4/latest/USD", timeout=10)
         r.raise_for_status()
         return r.json()["rates"]["PKR"]
     except Exception as e:
-        print(f"Exchange rate fetch failed: {e}")
-        return 280.0  # safe fallback
+        print(f"Exchange rate failed: {e}")
+        return 280.0  # fallback
+
 
 def calculate_price_per_tola(price_per_gram_usd, usd_to_pkr):
     if not price_per_gram_usd or not usd_to_pkr:
         return 0.0
     return round(price_per_gram_usd * usd_to_pkr * GRAMS_PER_TOLA, 2)
 
+
 def format_price(price):
-    """Format price with commas and ensure it's a clean string."""
     return "{:,.2f}".format(price)
 
-# ================= WHATSAPP =================
+# ================= WHATSAPP (WHAPI) =================
 def send_whatsapp_message(price_24k, price_22k):
-    if not all([TWILIO_SID, TWILIO_AUTH, MY_WHATSAPP_NUMBER]):
-        print("WhatsApp skipped: missing Twilio config.")
+    if not all([WHAPI_TOKEN, MY_WHATSAPP_NUMBER]):
+        print("WhatsApp skipped: missing Whapi config")
         return
 
+    # Normalize Pakistani number → 92xxxxxxxxxx
+    number = MY_WHATSAPP_NUMBER.strip().replace(" ", "").replace("-", "")
+    if number.startswith("+"):
+        number = number[1:]
+    elif number.startswith("03"):
+        number = "92" + number[1:]
+
     body = (
-        f"Gold Price Update (PKR)\n"
-        f"Date: {datetime.now().strftime('%d %b %Y')} | "
-        f"Time: {datetime.now().strftime('%I:%M %p')}\n\n"
-        f"24K per Tola: Rs. {format_price(price_24k)}\n"
-        f"22K per Tola: Rs. {format_price(price_22k)}"
+        f"📊 *Gold Price Update (PKR)*\n"
+        f"📅 {datetime.now().strftime('%d %b %Y')} | "
+        f"⏰ {datetime.now().strftime('%I:%M %p')}\n\n"
+        f"🟡 *24K per Tola:* Rs. {format_price(price_24k)}\n"
+        f"🟠 *22K per Tola:* Rs. {format_price(price_22k)}"
     )
 
-    try:
-        client = Client(TWILIO_SID, TWILIO_AUTH)
-        msg = client.messages.create(
-            from_=TWILIO_WHATSAPP_NUMBER,
-            to=MY_WHATSAPP_NUMBER,
-            body=body,
-        )
-        print(f"WhatsApp sent successfully. SID: {msg.sid}")
-    except TwilioRestException as e:
-        if e.status == 429:
-            print("WhatsApp skipped: daily message limit reached.")
-        else:
-            print(f"WhatsApp Twilio error: {e}")
-    except Exception as e:
-        print(f"Unexpected WhatsApp error: {e}")
+    payload = {
+        "to": number,
+        "body": body,
+        "typing_time": 0
+    }
 
-# ================= EMAIL (FIXED ENCODING) =================
+    headers = {
+        "Authorization": f"Bearer {WHAPI_TOKEN}",
+        "Accept": "application/json",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        r = requests.post(
+            WHAPI_API_URL,
+            json=payload,
+            headers=headers,
+            timeout=20
+        )
+        r.raise_for_status()
+        print("WhatsApp message sent successfully via Whapi")
+    except Exception as e:
+        print(f"WhatsApp error: {e} | {r.text if 'r' in locals() else ''}")
+
+# ================= EMAIL =================
 def send_email(price_24k, price_22k, usd_to_pkr):
     if not all([GMAIL_EMAIL, GMAIL_APP_PASSWORD, EMAIL_RECIPIENT]):
-        print("Email skipped: missing Gmail config.")
+        print("Email skipped: missing Gmail config")
         return
 
     date_str = datetime.now().strftime('%d %b %Y')
     time_str = datetime.now().strftime('%I:%M %p')
-    
-    # Building the email object (EmailMessage handles UTF-8 automatically)
+
     msg = EmailMessage()
     msg["Subject"] = f"Gold Price Update (PKR) - {date_str}"
     msg["From"] = GMAIL_EMAIL
     msg["To"] = EMAIL_RECIPIENT
 
-    # Plain text version
-    text_content = (
+    text = (
         f"Gold Price Update\n"
         f"Date: {date_str} {time_str}\n"
         f"24K: Rs. {format_price(price_24k)}\n"
         f"22K: Rs. {format_price(price_22k)}\n"
-        f"Rate: {usd_to_pkr:.2f}"
+        f"USD/PKR: {usd_to_pkr:.2f}"
     )
 
-    # HTML version
-    html_content = f"""
+    html = f"""
     <html>
-    <body>
-        <h2 style="color: #D4AF37;">Gold Price Update (PKR)</h2>
+      <body>
+        <h2 style="color:#D4AF37;">Gold Price Update (PKR)</h2>
         <p><b>Date:</b> {date_str}<br><b>Time:</b> {time_str}</p>
-        <hr>
         <ul>
           <li><b>24K per Tola:</b> Rs. {format_price(price_24k)}</li>
           <li><b>22K per Tola:</b> Rs. {format_price(price_22k)}</li>
           <li><b>USD/PKR:</b> {usd_to_pkr:.2f}</li>
         </ul>
-    </body>
+      </body>
     </html>
     """
-    
-    msg.set_content(text_content)
-    msg.add_alternative(html_content, subtype='html')
+
+    msg.set_content(text)
+    msg.add_alternative(html, subtype="html")
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587, timeout=20) as server:
             server.starttls()
             server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
             server.send_message(msg)
-            print("Email sent successfully via Gmail")
+            print("Email sent successfully")
     except Exception as e:
-        print(f"Email failed: {e}")
+        print(f"Email error: {e}")
 
 # ================= JOB =================
 def job():
-    try:
-        usd_to_pkr = get_usd_to_pkr_rate()
-        price_24k_usd, price_22k_usd = get_gold_price_usd()
+    usd_to_pkr = get_usd_to_pkr_rate()
+    price_24k_usd, price_22k_usd = get_gold_price_usd()
 
-        if not price_24k_usd:
-            print("Job skipped: gold price unavailable.")
-            return
+    if not price_24k_usd:
+        print("Job skipped: gold price unavailable")
+        return
 
-        price_24k = calculate_price_per_tola(price_24k_usd, usd_to_pkr)
-        price_22k = calculate_price_per_tola(price_22k_usd, usd_to_pkr)
+    price_24k = calculate_price_per_tola(price_24k_usd, usd_to_pkr)
+    price_22k = calculate_price_per_tola(price_22k_usd, usd_to_pkr)
 
-        print("===================================")
-        print(f"24K Tola: Rs. {format_price(price_24k)}")
-        print(f"22K Tola: Rs. {format_price(price_22k)}")
-        print(f"USD/PKR: {usd_to_pkr:.2f}")
-        print("===================================")
+    print("===================================")
+    print(f"24K Tola: Rs. {format_price(price_24k)}")
+    print(f"22K Tola: Rs. {format_price(price_22k)}")
+    print(f"USD/PKR: {usd_to_pkr:.2f}")
+    print("===================================")
 
-        send_whatsapp_message(price_24k, price_22k)
-        send_email(price_24k, price_22k, usd_to_pkr)
+    send_whatsapp_message(price_24k, price_22k)
+    send_email(price_24k, price_22k, usd_to_pkr)
 
-    except Exception as e:
-        print(f"Unexpected job error: {e}")
 
 if __name__ == "__main__":
     job()
