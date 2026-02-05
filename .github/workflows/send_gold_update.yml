@@ -2,7 +2,7 @@ name: Gold Price WhatsApp & Email Notifier
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # every 30 minutes
+    - cron: '*/180 * * * *'   # every 3 hours
   workflow_dispatch:
 
 jobs:
@@ -29,7 +29,7 @@ jobs:
           TWILIO_ACCOUNT_SID: ${{ secrets.TWILIO_ACCOUNT_SID }}
           TWILIO_AUTH_TOKEN: ${{ secrets.TWILIO_AUTH_TOKEN }}
           MY_WHATSAPP_NUMBER: ${{ secrets.MY_WHATSAPP_NUMBER }}
-          BREVO_SMTP_LOGIN: ${{ secrets.BREVO_SMTP_LOGIN }}
-          BREVO_SMTP_KEY: ${{ secrets.BREVO_SMTP_KEY }}
+          GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
           EMAIL_RECIPIENT: ${{ secrets.EMAIL_RECIPIENT }}
         run: python notifier.py
