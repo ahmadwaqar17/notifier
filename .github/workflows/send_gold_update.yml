@@ -25,6 +25,7 @@ jobs:
 
       - name: Run notifier
         env:
+          TZ: Asia/Karachi
           WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
           MY_WHATSAPP_NUMBER: ${{ secrets.MY_WHATSAPP_NUMBER }}
           GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
