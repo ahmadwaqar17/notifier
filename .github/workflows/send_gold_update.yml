@@ -2,7 +2,7 @@ name: Gold Price WhatsApp & Email Notifier
 
 on:
   schedule:
-    - cron: '*/30 * * * *'   # Every 30 minutes
+    - cron: '*/30 * * * *'   # Every 30 minutes (UTC)
   workflow_dispatch:
 
 jobs:
@@ -21,11 +21,10 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests
+          pip install requests lxml
 
       - name: Run notifier
         env:
-          GOLD_API_KEY: ${{ secrets.GOLD_API_KEY }}
           WHAPI_TOKEN: ${{ secrets.WHAPI_TOKEN }}
           MY_WHATSAPP_NUMBER: ${{ secrets.MY_WHATSAPP_NUMBER }}
           GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
