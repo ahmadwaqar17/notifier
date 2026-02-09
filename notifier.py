@@ -1,4 +1,5 @@
 import os
+import time
 import requests
 import smtplib
 from email.message import EmailMessage
@@ -25,28 +26,43 @@ def get_gold_price_24k_pkr():
     url = "https://abbasiandcompany.com/today-gold-rate-pakistan"
     xpath = '//*[@id="pkr2"]/div[1]'
 
-    try:
-        now = datetime.now(PAKISTAN_TZ)
-        print(f"[{now}] Fetching gold price from Abbasi & Company")
+    headers = {
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/121.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Referer": "https://www.google.com/",
+        "Connection": "keep-alive",
+    }
 
-        r = requests.get(url, timeout=15)
-        r.raise_for_status()
+    now = datetime.now(PAKISTAN_TZ)
+    print(f"[{now}] Fetching gold price from Abbasi & Company")
 
-        tree = html.fromstring(r.content)
-        element = tree.xpath(xpath)
+    for attempt in range(3):
+        try:
+            r = requests.get(url, headers=headers, timeout=20)
+            r.raise_for_status()
 
-        if not element:
-            raise ValueError("Gold price element not found")
+            tree = html.fromstring(r.content)
+            element = tree.xpath(xpath)
 
-        # Extract digits only (Rs. 214,500 → 214500)
-        price_text = element[0].text_content()
-        price = int("".join(filter(str.isdigit, price_text)))
+            if not element:
+                raise ValueError("Gold price element not found")
 
-        return price
+            price_text = element[0].text_content()
+            price = int("".join(filter(str.isdigit, price_text)))
 
-    except Exception as e:
-        print(f"Gold price scraping failed: {e}")
-        return None
+            return price
+
+        except Exception as e:
+            print(f"Attempt {attempt + 1} failed: {e}")
+            time.sleep(5)
+
+    print("Gold price scraping failed after retries")
+    return None
 
 # ================= WHATSAPP =================
 def send_whatsapp_message(price_24k):
@@ -100,14 +116,12 @@ def send_email(price_24k):
     msg["From"] = GMAIL_EMAIL
     msg["To"] = EMAIL_RECIPIENT
 
-    text = (
+    msg.set_content(
         f"Gold Price Update\n\n"
         f"24K Gold per Tola: Rs. {price_24k:,}\n"
         f"Date: {now.strftime('%d %b %Y %I:%M %p')}\n"
         f"Source: Abbasi & Company"
     )
-
-    msg.set_content(text)
 
     try:
         with smtplib.SMTP("smtp.gmail.com", 587) as server:
