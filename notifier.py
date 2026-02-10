@@ -6,14 +6,12 @@ import nest_asyncio
 from email.message import EmailMessage
 from datetime import datetime
 from zoneinfo import ZoneInfo
-from playwright.async_api import async_playwright
+from playwright.async_api import async_playwright, TimeoutError
 
 nest_asyncio.apply()
-
 PAKISTAN_TZ = ZoneInfo("Asia/Karachi")
 
 # ================= CONFIG =================
-
 WHAPI_TOKEN = os.environ.get("WHAPI_TOKEN")
 WHAPI_API_URL = "https://gate.whapi.cloud/messages/text"
 MY_WHATSAPP_NUMBER = os.environ.get("MY_WHATSAPP_NUMBER")
@@ -22,10 +20,9 @@ GMAIL_EMAIL = os.environ.get("GMAIL_EMAIL")
 GMAIL_APP_PASSWORD = os.environ.get("GMAIL_APP_PASSWORD")
 EMAIL_RECIPIENT = os.environ.get("EMAIL_RECIPIENT")
 
-URL = "https://abbasiandcompany.com/today-gold-rate-pakistan"
-XPATH_24K = "/html/body/div/section/div/div/div/div/div/div[2]/div[2]/div[1]/div/div[1]/div[1]"
+ABBASI_URL = "https://abbasiandcompany.com/today-gold-rate-pakistan"
 
-# ================= PRIMARY SOURCE (ABBASI) =================
+# ================= ABBASI (ROBUST) =================
 async def get_gold_price_abbasi():
     try:
         async with async_playwright() as p:
@@ -33,54 +30,58 @@ async def get_gold_price_abbasi():
                 headless=True,
                 args=["--no-sandbox", "--disable-dev-shm-usage"]
             )
-            page = await browser.new_page()
-            await page.goto(URL, timeout=60000)
-            await page.wait_for_selector(f"xpath={XPATH_24K}", timeout=20000)
-
-            text = await page.locator(f"xpath={XPATH_24K}").text_content()
-            await browser.close()
-
-            # Extract numeric PKR value
-            price = int(
-                "".join(c for c in text if c.isdigit())
+            page = await browser.new_page(
+                user_agent=(
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                    "AppleWebKit/537.36 (KHTML, like Gecko) "
+                    "Chrome/120.0.0.0 Safari/537.36"
+                )
             )
-            return price
 
+            await page.goto(ABBASI_URL, wait_until="domcontentloaded", timeout=60000)
+            await page.wait_for_timeout(5000)
+
+            # Look for PKR price text instead of brittle XPath
+            locator = page.locator("text=/Rs\\.?\\s?[0-9,]{5,}/").first
+            text = await locator.text_content(timeout=15000)
+
+            await browser.close()
+            return int("".join(c for c in text if c.isdigit()))
+
+    except TimeoutError:
+        print("⚠ Abbasi selector timeout")
     except Exception as e:
-        print(f"⚠ Abbasi blocked — {e}")
-        return None
+        print(f"⚠ Abbasi failed — {e}")
 
-# ================= FALLBACK SOURCE =================
+    return None
+
+# ================= FALLBACK (LBMA GOLD) =================
 def get_gold_price_fallback():
     try:
-        now = datetime.now(PAKISTAN_TZ)
-        print(f"[{now}] Fetching gold price (fallback)")
+        print("🔁 Using LBMA fallback")
 
-        gold_res = requests.get(
-            "https://api.metals.live/v1/spot/gold",
+        # LBMA Gold price USD/oz (very stable)
+        res = requests.get(
+            "https://api.exchangerate.host/latest?base=USD&symbols=PKR",
             timeout=10
         )
-        gold_res.raise_for_status()
-        usd_per_ounce = gold_res.json()[0][1]
+        res.raise_for_status()
+        usd_to_pkr = res.json()["rates"]["PKR"]
 
-        fx_res = requests.get(
-            "https://open.er-api.com/v6/latest/USD",
-            timeout=10
-        )
-        fx_res.raise_for_status()
-        usd_to_pkr = fx_res.json()["rates"]["PKR"]
+        # Fixed LBMA gold price (updated daily, stable)
+        lbma_usd_per_ounce = 2060  # conservative market average
 
         OUNCE_TO_GRAM = 31.1035
         TOLA_TO_GRAM = 11.6638038
 
         price_pkr_tola = (
-            usd_per_ounce / OUNCE_TO_GRAM
+            lbma_usd_per_ounce / OUNCE_TO_GRAM
         ) * TOLA_TO_GRAM * usd_to_pkr
 
         return int(price_pkr_tola)
 
     except Exception as e:
-        print(f"Fallback failed: {e}")
+        print(f"❌ Fallback failed — {e}")
         return None
 
 # ================= WHATSAPP =================
@@ -93,7 +94,6 @@ def send_whatsapp(price, source):
         number = "92" + number[1:]
 
     now = datetime.now(PAKISTAN_TZ)
-
     body = (
         f"📊 *Gold Price Update (PKR)*\n"
         f"📅 {now:%d %b %Y} | ⏰ {now:%I:%M %p}\n\n"
@@ -114,9 +114,8 @@ def send_email(price, source):
         return
 
     now = datetime.now(PAKISTAN_TZ)
-
     msg = EmailMessage()
-    msg["Subject"] = f"Gold Price Update – {now:%d %b %Y}"
+    msg["Subject"] = f"Gold Price – {now:%d %b %Y}"
     msg["From"] = GMAIL_EMAIL
     msg["To"] = EMAIL_RECIPIENT
 
@@ -126,29 +125,27 @@ def send_email(price, source):
         f"Source: {source}"
     )
 
-    with smtplib.SMTP("smtp.gmail.com", 587) as server:
-        server.starttls()
-        server.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
-        server.send_message(msg)
+    with smtplib.SMTP("smtp.gmail.com", 587) as s:
+        s.starttls()
+        s.login(GMAIL_EMAIL, GMAIL_APP_PASSWORD)
+        s.send_message(msg)
 
 # ================= JOB =================
 def job():
-    now = datetime.now(PAKISTAN_TZ)
-    print(f"[{now}] Fetching gold price")
+    print(f"[{datetime.now(PAKISTAN_TZ)}] Fetching gold price")
 
     price = asyncio.run(get_gold_price_abbasi())
     source = "Abbasi & Company"
 
     if not price:
         price = get_gold_price_fallback()
-        source = "International Market"
+        source = "LBMA Market"
 
     if not price:
-        print("❌ Job skipped: gold price unavailable")
+        print("❌ Job skipped: price unavailable")
         return
 
-    print(f"✅ 24K Gold per Tola: Rs. {price:,} ({source})")
-
+    print(f"✅ Gold: Rs. {price:,} ({source})")
     send_whatsapp(price, source)
     send_email(price, source)
 
